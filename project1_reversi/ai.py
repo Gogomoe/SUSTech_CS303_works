@@ -35,18 +35,14 @@ class AI(object):
 
         depth = 4
 
-        result_move = actions[0]
-        new_chessboard = self.make_move(chessboard, actions[0], self.color)
-        result_max = -self.alpha_beta(new_chessboard, -INFINITY, INFINITY, -self.color, depth)
+        result_max = -INFINITY
 
-        for action in actions[1:]:
+        for action in actions:
             new_chessboard = self.make_move(chessboard, action, self.color)
             result = -self.alpha_beta(new_chessboard, -INFINITY, INFINITY, -self.color, depth)
             if result > result_max:
                 result_max = result
-                result_move = action
-
-        self.candidate_list.append(result_move)
+                self.candidate_list.append(action)
 
     def actions(self, chessboard: np.ndarray, color: int) -> List[Tuple[int, int]]:
         def check_point(sy: int, sx: int) -> bool:
