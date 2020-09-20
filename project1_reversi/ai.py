@@ -12,6 +12,150 @@ COLOR_WHITE = 1
 COLOR_NONE = 0
 random.seed(0)
 
+# @formatter:off
+point_weight = np.array([
+    [100, -10,  8,  6,  6,  8, -10, 100],
+    [-10, -25, -4, -4, -4, -4, -25, -10],
+    [  8,  -4,  6,  4,  4,  6,  -4,   8],
+    [  6,  -4,  4,  0,  0,  4,  -4,   6],
+    [  6,  -4,  4,  0,  0,  4,  -4,   6],
+    [  8,  -4,  6,  4,  4,  6,  -4,   8],
+    [-10, -25, -4, -4, -4, -4, -25, -10],
+    [100, -10,  8,  6,  6,  8, -10, 100]
+])
+# @formatter:on
+
+
+class Evaluator:
+
+    def __init__(self, ai):
+        self.ai = ai
+        self.chessboard_size = ai.chessboard_size
+        self.color = ai.color
+
+    def evaluate(self, chessboard: np.ndarray) -> int:
+
+        result = 0
+
+        weight = self.weights_game_phase(chessboard)
+
+        result += weight[0] * self.placement(chessboard)
+        result += weight[1] * self.pieces(chessboard)
+        result += weight[2] * self.mobility(chessboard)
+        result += weight[3] * self.stability(chessboard)
+
+        return result
+
+    def weights_game_phase(self, chessboard: np.ndarray) -> List[int]:
+        size = self.chessboard_size
+        step = 0
+
+        for i in range(self.chessboard_size):
+            for j in range(self.chessboard_size):
+                step += abs(chessboard[i, j])
+
+        if step / size / size < 0.4:
+            return [
+                10,  # 0 placement
+                10,  # 1 pieces
+                50,  # 2 mobility
+                200,  # 3 steady
+            ]
+        elif step / size / size < 0.7:
+            return [
+                10,  # 0 placement
+                10,  # 1 pieces
+                20,  # 2 mobility
+                200,  # 3 steady
+            ]
+        else:
+            return [
+                5,  # 0 placement
+                50,  # 1 pieces
+                50,  # 2 mobility
+                200,  # 3 steady
+            ]
+
+    def pieces(self, chessboard: np.ndarray) -> int:
+        my_piece = 0
+        op_piece = 0
+        for i in range(self.chessboard_size):
+            for j in range(self.chessboard_size):
+                if chessboard[i][j] == self.color:
+                    my_piece += 1
+                if chessboard[i][j] == -self.color:
+                    op_piece += 1
+        return 100 * (my_piece - op_piece) // (my_piece + op_piece + 1)
+
+    def placement(self, chessboard: np.ndarray) -> int:
+        weight: np.ndarray
+        if self.chessboard_size == 8:
+            weight = point_weight
+        else:
+            weight = np.ones((self.chessboard_size, self.chessboard_size))
+
+        my_weight = 0
+        op_weight = 0
+        for i in range(self.chessboard_size):
+            for j in range(self.chessboard_size):
+                if chessboard[i][j] == self.color:
+                    my_weight += weight[i][j]
+                if chessboard[i][j] == -self.color:
+                    op_weight += weight[i][j]
+        return my_weight - op_weight
+
+    def mobility(self, chessboard: np.ndarray) -> int:
+        my_mobility = len(self.ai.actions(chessboard, self.color))
+        op_mobility = len(self.ai.actions(chessboard, -self.color))
+        return 100 * (my_mobility - op_mobility) // (my_mobility + op_mobility + 1)
+
+    def stability(self, chessboard: np.ndarray) -> int:
+        my_stability = 0
+        op_stability = 0
+
+        # 0 -> not search, -1 -> black, 1 -> white, 2 -> not steady, 3 -> out bound
+        size = self.chessboard_size
+        steady_board = np.zeros((size, size))
+        point_queue = deque([(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)])
+
+        def check_steady(y, x):
+            if x < 0 or x >= size or y < 0 or y >= size:
+                return 3
+            if abs(steady_board[y, x]) == 1:
+                return steady_board[y, x]
+            return 2
+
+        while point_queue:
+            y, x = point_queue.popleft()
+            if x < 0 or x >= size or y < 0 or y >= size:
+                continue
+            if steady_board[y, x] != 0:
+                continue
+
+            color = chessboard[y, x]
+            if color == 0:
+                steady_board[y, x] = 2
+                continue
+            for dy, dx in [(0, 1), (1, 1), (1, 0), (1, -1)]:
+                dir1 = check_steady(y + dy, x + dx)
+                dir2 = check_steady(y - dy, x - dx)
+
+                one_side_empty = dir1 == 3 or dir2 == 3
+                one_side_steady = dir1 == color or dir2 == color
+                two_side_enemy_steady = dir1 == -color and dir2 == -color
+                if not (one_side_empty or one_side_steady or two_side_enemy_steady):
+                    steady_board[y, x] = 2
+                    break
+            if steady_board[y, x] == 0:
+                steady_board[y, x] = color
+                if color == self.color:
+                    my_stability += 1
+                if color == -self.color:
+                    op_stability += 1
+            point_queue.extend([(y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)])
+
+        return 100 * (my_stability - op_stability) // (my_stability + op_stability + 1)
+
 
 # don't change the class name
 class AI(object):
@@ -22,6 +166,7 @@ class AI(object):
         self.color = color
         self.time_out = time_out
         self.candidate_list = []
+        self.evaluator = Evaluator(self)
 
     # The input is current chessboard.
     def go(self, chessboard: np.ndarray):
@@ -34,6 +179,15 @@ class AI(object):
             return
 
         depth = 4
+
+        # final_step = 10
+        # step = 0
+        # for i in range(self.chessboard_size):
+        #     for j in range(self.chessboard_size):
+        #         step += abs(chessboard[i, j])
+        # space = self.chessboard_size * self.chessboard_size - step
+        # if space <= final_step:
+        #     depth = final_step - 1
 
         result_max = -INFINITY
 
@@ -89,72 +243,7 @@ class AI(object):
         return result_max
 
     def evaluate(self, chessboard: np.ndarray) -> int:
-        weight = [
-            6,  # 0 corner
-            -3,  # 1 corner danger
-            -6,  # 2 more danger
-            2,  # 3 point
-            2,  # 4 mobility
-            4,  # 5 steady
-        ]
-
-        result = 0
-        sign = {self.color: 1, -self.color: -1, 0: 0}
-
-        for (i, j) in [(0, 0), (-1, 0), (0, -1), (-1, -1)]:
-            result += sign[chessboard[i, j]] * weight[0]
-
-        for (i, j) in [(0, 1), (1, 0), (0, -2), (-2, 0), (1, -1), (-1, 1), (-1, -2), (-2, -1)]:
-            result += sign[chessboard[i, j]] * weight[1]
-
-        for (i, j) in [(1, 1), (1, -2), (-2, 1), (-2, -2)]:
-            result += sign[chessboard[i, j]] * weight[2]
-
-        size = self.chessboard_size
-        for i in range(size):
-            for j in range(size):
-                result += sign[chessboard[i, j]] * weight[3]
-
-        result += len(self.actions(chessboard, self.color)) * weight[4]
-
-        # 0 -> not search, -1 -> black, 1 -> white, 2 -> not steady, 3 -> out bound
-        steady_board = np.zeros((size, size))
-        point_queue = deque([(0, 0), (size - 1, 0), (0, size - 1), (size - 1, size - 1)])
-
-        def check_steady(y, x):
-            if x < 0 or x >= size or y < 0 or y >= size:
-                return 3
-            if abs(steady_board[y, x]) == 1:
-                return steady_board[y, x]
-            return 2
-
-        while point_queue:
-            y, x = point_queue.popleft()
-            if x < 0 or x >= size or y < 0 or y >= size:
-                continue
-            if steady_board[y, x] != 0:
-                continue
-
-            color = chessboard[y, x]
-            if color == 0:
-                steady_board[y, x] = 2
-                continue
-            for dy, dx in [(0, 1), (1, 1), (1, 0), (1, -1)]:
-                dir1 = check_steady(y + dy, x + dx)
-                dir2 = check_steady(y - dy, x - dx)
-
-                one_side_empty = dir1 == 3 or dir2 == 3
-                one_side_steady = dir1 == color or dir2 == color
-                two_side_enemy_steady = dir1 == -color and dir2 == -color
-                if not (one_side_empty or one_side_steady or two_side_enemy_steady):
-                    steady_board[y, x] = 2
-                    break
-            if steady_board[y, x] == 0:
-                steady_board[y, x] = color
-                result += sign[color] * weight[5]
-            point_queue.extend([(y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)])
-
-        return result
+        return self.evaluator.evaluate(chessboard)
 
     def can_move(self, chessboard: np.ndarray, color: int) -> bool:
         return len(self.actions(chessboard, color)) > 0
