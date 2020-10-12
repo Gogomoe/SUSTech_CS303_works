@@ -32,7 +32,7 @@ class Evaluator:
         self.chessboard_size = ai.chessboard_size
         self.color = ai.color
 
-    def evaluate(self, chessboard: np.ndarray) -> int:
+    def evaluate(self, chessboard: np.ndarray, current_player: int) -> int:
 
         result = 0
 
@@ -42,6 +42,7 @@ class Evaluator:
         result += weight[1] * self.pieces(chessboard)
         result += weight[2] * self.mobility(chessboard)
         result += weight[3] * self.stability(chessboard)
+        result += weight[4] * self.corner(chessboard, current_player)
 
         return result
 
@@ -59,6 +60,7 @@ class Evaluator:
                 10,  # 1 pieces
                 50,  # 2 mobility
                 200,  # 3 steady
+                1000,  # 4 corner
             ]
         elif step / size / size < 0.7:
             return [
@@ -66,6 +68,7 @@ class Evaluator:
                 10,  # 1 pieces
                 20,  # 2 mobility
                 200,  # 3 steady
+                1000,  # 4 corner
             ]
         else:
             return [
@@ -73,6 +76,7 @@ class Evaluator:
                 50,  # 1 pieces
                 50,  # 2 mobility
                 200,  # 3 steady
+                1000,  # 4 corner
             ]
 
     def pieces(self, chessboard: np.ndarray) -> int:
@@ -155,6 +159,14 @@ class Evaluator:
 
         return 100 * (my_stability - op_stability) // (my_stability + op_stability + 1)
 
+    def corner(self, chessboard: np.ndarray, current_player: int) -> int:
+        actions = self.ai.actions(chessboard, current_player)
+        last = self.chessboard_size - 1
+        for action in actions:
+            if action == (0, 0) or action == (0, last) or action == (last, 0) or action == (last, last):
+                return 100 * (1 if current_player == self.color else -1)
+        return 0
+
 
 # don't change the class name
 class AI(object):
@@ -223,15 +235,15 @@ class AI(object):
         return result
 
     def max_value(self, chessboard: np.ndarray, alpha: int, beta: int, depth: int) -> int:
+        current_player = self.color
         if depth <= 0:
-            return self.evaluate(chessboard)
-        color = self.color
-        actions = self.actions(chessboard, color)
+            return self.evaluate(chessboard, current_player)
+        actions = self.actions(chessboard, current_player)
         if len(actions) == 0:
             return self.min_value(chessboard, alpha, beta, depth - 1)
         v = -INFINITY
         for move in actions:
-            new_chessboard = self.make_move(chessboard, move, color)
+            new_chessboard = self.make_move(chessboard, move, current_player)
             v = max(v, self.min_value(new_chessboard, alpha, beta, depth - 1))
             if v >= beta:
                 return v
@@ -239,23 +251,23 @@ class AI(object):
         return v
 
     def min_value(self, chessboard: np.ndarray, alpha: int, beta: int, depth: int) -> int:
+        current_player = -self.color
         if depth <= 0:
-            return self.evaluate(chessboard)
-        color = -self.color
-        actions = self.actions(chessboard, color)
+            return self.evaluate(chessboard, current_player)
+        actions = self.actions(chessboard, current_player)
         if len(actions) == 0:
             return self.max_value(chessboard, alpha, beta, depth - 1)
         v = INFINITY
         for move in actions:
-            new_chessboard = self.make_move(chessboard, move, color)
+            new_chessboard = self.make_move(chessboard, move, current_player)
             v = min(v, self.max_value(new_chessboard, alpha, beta, depth - 1))
             if v <= alpha:
                 return v
             beta = min(beta, v)
         return v
 
-    def evaluate(self, chessboard: np.ndarray) -> int:
-        return self.evaluator.evaluate(chessboard)
+    def evaluate(self, chessboard: np.ndarray, current_player: int) -> int:
+        return self.evaluator.evaluate(chessboard, current_player)
 
     def make_move(self, chessboard: np.ndarray, move: Tuple[int, int], color: int):
         new = chessboard.copy()
