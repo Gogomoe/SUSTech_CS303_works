@@ -1,9 +1,8 @@
-import numpy as np
 import random
-import time
 from collections import deque
-
 from typing import List, Tuple
+
+import numpy as np
 
 INFINITY = 1000000000
 
@@ -189,13 +188,14 @@ class AI(object):
         # if space <= final_step:
         #     depth = final_step - 1
 
-        result_max = -INFINITY
+        bestScore = -INFINITY
+        beta = INFINITY
 
         for action in actions:
             new_chessboard = self.make_move(chessboard, action, self.color)
-            result = -self.alpha_beta(new_chessboard, -INFINITY, INFINITY, -self.color, depth)
-            if result > result_max:
-                result_max = result
+            v = self.min_value(new_chessboard, bestScore, beta, depth)
+            if v > bestScore:
+                bestScore = v
                 self.candidate_list.append(action)
 
     def actions(self, chessboard: np.ndarray, color: int) -> List[Tuple[int, int]]:
@@ -222,31 +222,40 @@ class AI(object):
 
         return result
 
-    def alpha_beta(self, chessboard: np.ndarray, alpha: int, beta: int, color: int, depth: int) -> int:
-        sign = {self.color: 1, -self.color: -1}
-        result_max = -INFINITY
+    def max_value(self, chessboard: np.ndarray, alpha: int, beta: int, depth: int) -> int:
         if depth <= 0:
-            return sign[color] * self.evaluate(chessboard)
-        if not self.can_move(chessboard, color):
-            if not self.can_move(chessboard, -color):
-                return sign[color] * self.evaluate(chessboard)
-            return -self.alpha_beta(chessboard, -beta, -alpha, -color, depth)
-
-        for move in self.actions(chessboard, color):
+            return self.evaluate(chessboard)
+        color = self.color
+        actions = self.actions(chessboard, color)
+        if len(actions) == 0:
+            return self.min_value(chessboard, alpha, beta, depth - 1)
+        v = -INFINITY
+        for move in actions:
             new_chessboard = self.make_move(chessboard, move, color)
-            val = -self.alpha_beta(new_chessboard, -beta, -alpha, -color, depth - 1)
-            if val > alpha:
-                if val >= beta:
-                    return val
-                alpha = max(alpha, val)
-            result_max = max(result_max, val)
-        return result_max
+            v = max(v, self.min_value(new_chessboard, alpha, beta, depth - 1))
+            if v >= beta:
+                return v
+            alpha = max(alpha, v)
+        return v
+
+    def min_value(self, chessboard: np.ndarray, alpha: int, beta: int, depth: int) -> int:
+        if depth <= 0:
+            return self.evaluate(chessboard)
+        color = -self.color
+        actions = self.actions(chessboard, color)
+        if len(actions) == 0:
+            return self.max_value(chessboard, alpha, beta, depth - 1)
+        v = INFINITY
+        for move in actions:
+            new_chessboard = self.make_move(chessboard, move, color)
+            v = min(v, self.max_value(new_chessboard, alpha, beta, depth - 1))
+            if v <= alpha:
+                return v
+            beta = min(beta, v)
+        return v
 
     def evaluate(self, chessboard: np.ndarray) -> int:
         return self.evaluator.evaluate(chessboard)
-
-    def can_move(self, chessboard: np.ndarray, color: int) -> bool:
-        return len(self.actions(chessboard, color)) > 0
 
     def make_move(self, chessboard: np.ndarray, move: Tuple[int, int], color: int):
         new = chessboard.copy()
