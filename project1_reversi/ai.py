@@ -200,14 +200,29 @@ class AI(object):
         # if space <= final_step:
         #     depth = final_step - 1
 
-        bestScore = -INFINITY
+        best_score = -INFINITY
+
+        greedy_corner = False
+        last = self.chessboard_size - 1
+        for action in actions:
+            if action == (0, 0) or action == (0, last) or action == (last, 0) or action == (last, last):
+                new_chessboard = self.make_move(chessboard, action, self.color)
+                v = self.evaluate(new_chessboard, -self.color)
+                if v > best_score:
+                    best_score = v
+                    greedy_corner = True
+                    self.candidate_list.append(action)
+        if greedy_corner:
+            return
+
+        best_score = -INFINITY
         beta = INFINITY
 
         for action in actions:
             new_chessboard = self.make_move(chessboard, action, self.color)
-            v = self.min_value(new_chessboard, bestScore, beta, depth)
-            if v > bestScore:
-                bestScore = v
+            v = self.min_value(new_chessboard, best_score, beta, depth)
+            if v > best_score:
+                best_score = v
                 self.candidate_list.append(action)
 
     def actions(self, chessboard: np.ndarray, color: int) -> List[Tuple[int, int]]:
