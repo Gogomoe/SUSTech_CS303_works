@@ -23,75 +23,85 @@ class Node:
         self.ins: List[Edge] = []
 
 
-def IC(network: List[Node], seeds: List[int]) -> int:
-    active: List[int] = seeds
-    active_table: List[bool] = [False] * (len(network))
+class DiffusionModel:
+    def __init__(self, network: List[Node]):
+        self.network: List[Node] = network
 
-    result: int = len(seeds)
-    for i in seeds:
-        active_table[i] = True
+    def diffuse(self, seeds: List[int]) -> int:
+        pass
 
-    while len(active) != 0:
-        next_active: List[int] = []
-        for node in active:
-            for edge in network[node].out:
-                if active_table[edge.to]:
-                    continue
-                p: float = random.random()
-                if p <= edge.weight:
-                    next_active.append(edge.to)
-                    active_table[edge.to] = True
-                    result += 1
-        active = next_active
-
-    return result
+    def diffuse_times(self, seeds: List[int], times: int) -> int:
+        result = 0
+        for _ in range(times):
+            result += self.diffuse(seeds)
+        return result
 
 
-def IC_times(network: List[Node], seeds: List[int], times: int) -> int:
-    result = 0
-    for _ in range(times):
-        result += IC(network, seeds)
-    return result
+class ICModel(DiffusionModel):
+    def __init__(self, network: List[Node]):
+        super().__init__(network)
+
+    def diffuse(self, seeds: List[int]) -> int:
+        network = self.network
+        active: List[int] = seeds
+        active_table: List[bool] = [False] * (len(network))
+
+        result: int = len(seeds)
+        for i in seeds:
+            active_table[i] = True
+
+        while len(active) != 0:
+            next_active: List[int] = []
+            for node in active:
+                for edge in network[node].out:
+                    if active_table[edge.to]:
+                        continue
+                    p: float = random.random()
+                    if p <= edge.weight:
+                        next_active.append(edge.to)
+                        active_table[edge.to] = True
+                        result += 1
+            active = next_active
+
+        return result
 
 
-def LT(network: List[Node], seeds: List[int]) -> int:
-    active: List[int] = seeds
-    active_table: List[bool] = [False] * (len(network))
-    threshold: List[float] = []
+class LTModel(DiffusionModel):
+    def __init__(self, network: List[Node]):
+        super().__init__(network)
 
-    result: int = len(seeds)
-    for i in seeds:
-        active_table[i] = True
+    def diffuse(self, seeds: List[int]) -> int:
+        network = self.network
+        active: List[int] = seeds
+        active_table: List[bool] = [False] * (len(network))
+        threshold: List[float] = []
 
-    for i in range(len(network)):
-        threshold.append(random.random())
+        result: int = len(seeds)
+        for i in seeds:
+            active_table[i] = True
 
-    while len(active) != 0:
-        next_active: List[int] = []
-        for node in active:
-            for edge in network[node].out:
-                to_node = edge.to
-                if active_table[to_node]:
-                    continue
-                w: float = 0.0
-                for x in network[to_node].ins:
-                    if active_table[x.fo]:
-                        w += x.weight
+        for i in range(len(network)):
+            threshold.append(random.random())
 
-                if w >= threshold[to_node]:
-                    next_active.append(to_node)
-                    active_table[to_node] = True
-                    result += 1
-        active = next_active
+        while len(active) != 0:
+            next_active: List[int] = []
+            for node in active:
+                for edge in network[node].out:
+                    to_node = edge.to
+                    if active_table[to_node]:
+                        continue
+                    w: float = 0.0
+                    for x in network[to_node].ins:
+                        if active_table[x.fo]:
+                            w += x.weight
 
-    return result
+                    if w >= threshold[to_node]:
+                        next_active.append(to_node)
+                        active_table[to_node] = True
+                        result += 1
+            active = next_active
 
-
-def LT_times(network: List[Node], seeds: List[int], times: int) -> int:
-    result = 0
-    for _ in range(times):
-        result += LT(network, seeds)
-    return result
+        return result
 
 
 def main():
@@ -139,18 +149,16 @@ def main():
 
     sum_result = 0
 
+    diffusion_model: DiffusionModel = None
     if model == "IC":
-        for i in range(core):
-            result.append(pool.apply_async(IC_times, args=(network, seeds, N // core)))
-        if N % core != 0:
-            sum_result += IC_times(network, seeds, N % core)
-
-
+        diffusion_model = ICModel(network)
     elif model == "LT":
-        for i in range(core):
-            result.append(pool.apply_async(LT_times, args=(network, seeds, N // core)))
-        if N % core != 0:
-            sum_result += LT_times(network, seeds, N % core)
+        diffusion_model = LTModel(network)
+
+    for i in range(core):
+        result.append(pool.apply_async(diffusion_model.diffuse_times, args=(seeds, N // core)))
+    if N % core != 0:
+        sum_result += diffusion_model.diffuse_times(seeds, N % core)
 
     pool.close()
     pool.join()
