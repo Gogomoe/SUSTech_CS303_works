@@ -4,6 +4,7 @@ from random import randint, random, choice
 from math import log, log2, sqrt, e
 from heapdict import heapdict
 from diffusion import Node, Edge, DiffusionModel, ICModel, LTModel
+from time import time
 
 
 class CELFNode:
@@ -20,6 +21,9 @@ model: str
 diffusion_model: DiffusionModel
 
 diffuse_times: int = 10
+
+start_time: float
+time_limit: int
 
 
 def CELF(network: List[Node], k: int) -> List[int]:
@@ -198,9 +202,16 @@ def sampling(network: List[Node], k: int, epsilon: float, l: float) -> List[List
 def IMM(network: List[Node], k: int, epsilon: float, l: float) -> List[int]:
     n: int = len(network) - 1
     l = l * (1 + log(2) / log(n))
-    R: List[List[int]] = sampling(network, k, epsilon, l)
+    # R: List[List[int]] = sampling(network, k, epsilon, l)
+    R: List[List[int]] = []
+
+    while time() - start_time < time_limit * 0.2 and len(R) < 5_0000:
+        v: int = randint(1, n)
+        R.append(generate_rr(network, v))
+
     S_k: Set[int]
     S_k, _ = node_selection(network, R, k)
+
     return list(S_k)
 
 
@@ -214,9 +225,9 @@ def main():
     args = parser.parse_args()
     file_name: str = args.file_name
     size: int = args.size
-    global model
+    global model, time_limit
     model = args.model
-    time_limit: int = args.time_limit
+    time_limit = args.time_limit
 
     nodes: int
     edges: int
@@ -255,4 +266,5 @@ def main():
 
 
 if __name__ == '__main__':
+    start_time: float = time()
     main()
